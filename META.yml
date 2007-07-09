@@ -1,0 +1,15 @@
+# http://module-build.sourceforge.net/META-spec.html
+#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
+name:         ZOOM-IRSpy
+version:      1.00
+version_from: lib/ZOOM/IRSpy.pm
+installdirs:  site
+requires:
+    Net::Z3950::ZOOM:              1.19
+    URI::Escape:                   3.28
+    XML::LibXML:                   1.58
+    XML::LibXML::XPathContext:     0.07
+    XML::LibXSLT:                  1.57
+
+distribution_type: module
+generated_by: ExtUtils::MakeMaker version 6.30_01

@@ -1,0 +1,43 @@
+$Id: Changes,v 1.18 2007/07/09 09:42:10 mike Exp $
+
+Revision history for Perl extension ZOOM::IRSpy.
+
+1.00  Mon Jul  9 10:42:06 BST 2007
+	- First public release.
+	- Many, many changes since 0.02.
+
+0.02  Wed Jun 27 12:09:49 BST 2007
+	- Renamed from Net::Z3950::IRSpy to ZOOM::IRSpy
+	- Fix display of non-ASCII characters in, for example, the
+	    list of targets beginning with "R".
+	- Change targets() API to accept a Perl list rather than a
+	    space-separated string.
+	- Change check.html parameters to cleanly accept multiple
+	    target IDs even if they contain spaces.
+	- Proper URL-encoding of all link parameters.
+	- Proper HTML-quoting of all output.
+	- Capture YAZ logging output for web display.
+	- Add Dublin Core record format to Zebra configuration.
+	- Much better "Add a target" form, including:
+		- Name
+		- URL to hosting organisation
+		- Email to technical contact
+		- Username/password if needed
+		- Type of library (Academic, Public, Corporate,
+		    Special, National, Education or Other)
+		- Country.
+	- "Add another database to this target" button.
+	- Form for editing details of an existing target.
+	- Require authentication for database-changing operations
+		such as target testing, adding a new target and
+		editing and existing one.
+	- Add statistics page like that one at
+		http://targettest.indexdata.com/stat.php
+	- Record deletion and ID change works correctly even when the
+	  ID contains spaces or non-ASCII characters.
+	- Many, many more enhancements.
+
+0.01  Wed Apr  5 15:53:47 2006
+	- original version; created by h2xs 1.23 with options
+		-X --name=Net::Z3950::IRSpy --compat-version=5.8.0 --omit-constant --skip-exporter --skip-ppport
+
