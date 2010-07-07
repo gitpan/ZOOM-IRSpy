@@ -1,5 +1,4 @@
-%# $Id: find.mc,v 1.11 2007/03/29 17:14:47 mike Exp $
-% if ($r->param("_search")) {
+% if (&utf8param($r,"_search")) {
 %     $m->comp("found.mc");
 % } else {
      <p>
@@ -53,6 +52,10 @@
        <tr>
         <th>Database Name</th>
 	<td><input type="text" name="net.path" size="20"/></td>
+       </tr>
+       <tr>
+        <th>Reliability at least</th>
+	<td><input type="text" name="zeerex.reliabilityAtLeast" size="20"/></td>
        </tr>
 <%doc>
        <tr><td colspan="2">&nbsp;</td></tr>

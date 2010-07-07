@@ -1,4 +1,3 @@
-# $Id: Search.pm,v 1.15 2007/05/01 16:30:42 mike Exp $
 
 package ZOOM::IRSpy::Task::Search;
 
@@ -49,7 +48,10 @@ sub run {
     my $qstr = $this->{qstr};
     $this->irspy()->log("irspy_task", $conn->option("host"),
 			" searching for '$qtype:$qstr'");
-    die "task $this has resultset?!" if defined $this->{rs};
+    if (defined $this->{rs}) {
+	$this->set_options();
+	die "task $this has resultset?!";
+    }
 
     my $query;
     if ($qtype eq "pqf") {
@@ -57,6 +59,7 @@ sub run {
     } elsif ($qtype eq "cql") {
 	$query = new ZOOM::Query::CQL($qstr);
     } else {
+	$this->set_options();
 	die "Huh?!";
     }
 
@@ -66,7 +69,13 @@ sub run {
     #	APPLICATION'S RESPONSIBILITY to ensure that the callback
     #	invoked on success OR FAILURE makes arrangements for the set
     #	to be destroyed.
-    $this->{rs} = $conn->search($query);
+    eval {
+	$this->{rs} = $conn->search($query);
+    }; if ($@) {
+	$this->set_options();
+	die "remote search '$query' had error: '$@'";
+    }
+
     warn "no ZOOM-C level events queued by $this"
 	if $conn->is_idle();
 

@@ -1,4 +1,3 @@
-# $Id: IRSpy.pm,v 1.86 2007/07/09 09:41:44 mike Exp $
 
 package ZOOM::IRSpy;
 
@@ -18,11 +17,15 @@ use ZOOM::IRSpy::Connection;
 use ZOOM::IRSpy::Stats;
 use ZOOM::IRSpy::Utils qw(cql_target render_record
 			  irspy_xpath_context irspy_make_identifier
-			  irspy_record2identifier);
+			  irspy_record2identifier calc_reliability_stats
+			  modify_xml_document);
 
 our @ISA = qw();
-our $VERSION = '1.00';
+our $VERSION = '1.02';
 our $irspy_to_zeerex_xsl = dirname(__FILE__) . '/../../xsl/irspy2zeerex.xsl';
+our $debug = 0;
+our $xslt_max_depth = 250;
+our $max_timeout_errors = 3;
 
 
 # Enumeration for callback functions to return
@@ -68,6 +71,7 @@ sub new {
     my $class = shift();
     my($dbname, $user, $password, $activeSetSize) = @_;
 
+
     my @options;
     push @options, (user => $user, password => $password)
 	if defined $user;
@@ -77,16 +81,23 @@ sub new {
 
     my $xslt = new XML::LibXSLT;
 
+    # raise the maximum number of nested template calls and variables/params (default 250)
+    warn "raise the maximum number of nested template calls: $xslt_max_depth\n" if $debug;
+    $xslt->max_depth($xslt_max_depth);
+
     $xslt->register_function($ZOOM::IRSpy::Utils::IRSPY_NS, 'strcmp',
                              \&ZOOM::IRSpy::Utils::xslt_strcmp);
 
     my $libxml = new XML::LibXML;
+    warn "use irspy_to_zeerex_xsl xslt sheet: $irspy_to_zeerex_xsl\n" if $debug;
     my $xsl_doc = $libxml->parse_file($irspy_to_zeerex_xsl);
     my $irspy_to_zeerex_style = $xslt->parse_stylesheet($xsl_doc);
 
     my $this = bless {
 	conn => $conn,
 	query => "cql.allRecords=1", # unless overridden
+	modn => undef,		# Filled in by restrict_modulo()
+	modi => undef,		# Filled in by restrict_modulo()
 	targets => undef,	# Filled in later if targets() is
 				# called; used only to keep state from
 				# targets() until initialise() is
@@ -96,6 +107,7 @@ sub new {
         libxml => $libxml,
         irspy_to_zeerex_style => $irspy_to_zeerex_style,
 	test => undef,		# Filled in by initialise()
+	timeout => undef,	# Filled in by initialise()
 	tests => undef,		# Tree of tests to be executed
 	activeSetSize => defined $activeSetSize ? $activeSetSize : 10,
     }, $class;
@@ -104,6 +116,16 @@ sub new {
     return $this;
 }
 
+# wrapper to read the IRSpy database name from environment variable / apache config
+sub connect_to_registry {
+    my %args = @_;
+
+    # XXX: we could also handle her: user, password, elementSetName
+
+    my $database = $ENV{IRSpyDbName} || "localhost:8018/IR-Explain---1";
+
+    return $database;
+}
 
 sub log {
     my $this = shift();
@@ -163,6 +185,15 @@ sub _parse_target_string {
 }
 
 
+sub restrict_modulo {
+    my $this = shift();
+    my($n, $i) = @_;
+
+    $this->{modn} = $n;
+    $this->{modi} = $i;
+}
+
+
 # Records must be fetched for all records satisfying $this->{query} If
 # $this->{targets} is already set (i.e. a specific list of targets to
 # check was specified by a call to targets()), then new, empty records
@@ -179,7 +210,7 @@ sub initialise {
     $this->{tree}->resolve();
     #$this->{tree}->print(0);
 
-    my $timeout = "ZOOM::IRSpy::Test::$tname"->timeout();
+    $this->{timeout} = "ZOOM::IRSpy::Test::$tname"->timeout();
 
     my @targets;
     my $targets = $this->{targets};
@@ -200,22 +231,59 @@ sub initialise {
     my $n = $this->{activeSetSize};
     $n = @targets if $n == 0 || $n > @targets;
 
-    my @connections;
-    foreach my $i (1..$n) {
-	push @connections, create ZOOM::IRSpy::Connection($this,
-							  shift @targets,
-							  async => 1,
-							  timeout => $timeout);
+    $this->{queue} = \@targets;
+    $this->{connections} = [];
+    while (@{ $this->{connections} } < $n) {
+	my $conn = $this->_next_connection();
+	last if !defined $conn;
+	push @{ $this->{connections} }, $conn;
+    }
+}
+
+
+sub _next_connection {
+    my $this = shift();
+
+    my $target;
+    my $n = $this->{modn};
+    my $i = $this->{modi};
+    if (!defined $n) {
+	$target = shift @{ $this->{queue} };
+	return undef if !defined $target;
+    } else {
+	while (1) {
+	    $target = shift @{ $this->{queue} };
+	    return undef if !defined $target;
+	    my $h = _hash($target);
+	    my $hmodn = $h % $n;
+	    last if $hmodn == $i;
+	    #$this->log("irspy", "'$target' hash $h % $n = $hmodn != $i");
+	}
     }
 
-    $this->{connections} = \@connections;
-    $this->{queue} = \@targets;
+    die "oops -- target is undefined" if !defined $target;
+    return create ZOOM::IRSpy::Connection($this, $target, async => 1,
+					  timeout => $this->{timeout});
+}
+
+
+sub _hash {
+    my($target) = @_;
+
+    my $n = 0;
+    foreach my $s (split //, $target) {
+	$n += ord($s);
+    }
+
+    return $n;
 }
 
 
 sub _irspy_to_zeerex {
     my $this = shift();
-    my($conn, $save_xml) = @_;
+    my($conn) = @_;
+
+    my $save_xml = $ENV{IRSPY_SAVE_XML};
     my $irspy_doc = $conn->record()->{zeerex}->ownerDocument;
 
     if ($save_xml) {
@@ -239,25 +307,36 @@ sub _irspy_to_zeerex {
 }
 
 
-sub _rewrite_record {
+sub _rewrite_irspy_record {
     my $this = shift();
     my($conn) = @_;
 
     $conn->log("irspy", "rewriting XML record");
-    my $rec = $this->_irspy_to_zeerex($conn, $ENV{IRSPY_SAVE_XML});
+    my $rec = $this->_irspy_to_zeerex($conn);
 
     # Since IRSpy can run for a long time between writes back to the
     # database, it's quite possible for the server to have closed the
     # connection as idle.  So re-establish it if necessary.
     $this->{conn}->connect($conn->option("host"));
 
-    _really_rewrite_record($this->{conn}, $rec);
+    _rewrite_zeerex_record($this->{conn}, $rec);
     $conn->log("irspy", "rewrote XML record");
 }
 
 
-sub _really_rewrite_record {
+my $_reliabilityField = {
+    reliability => [ reliability => 0,
+		      "Calculated reliability of server",
+		      "e:serverInfo/e:reliability" ],
+};
+
+sub _rewrite_zeerex_record {
     my($conn, $rec, $oldid) = @_;
+
+    # Add reliability score
+    my $xc = irspy_xpath_context($rec);
+    my($nok, $nall, $percent) = calc_reliability_stats($xc);
+    modify_xml_document($xc, $_reliabilityField, { reliability => $percent });
 
     my $p = $conn->package();
     $p->option(action => "specialUpdate");
@@ -268,7 +347,6 @@ sub _really_rewrite_record {
 
     # This is the expression in the ID-making stylesheet
     # ../../zebra/zeerex2id.xsl
-    my $xc = irspy_xpath_context($rec);
     my $id = irspy_record2identifier($xc);
     if (defined $oldid && $id ne $oldid) {
 	warn "IDs differ (old='$oldid' new='$id')";
@@ -354,7 +432,7 @@ sub check {
     my $this = shift();
 
     my $topname = $this->{tree}->name();
-    my $timeout = "ZOOM::IRSpy::Test::$topname"->timeout();
+    my $timeout = $this->{timeout};
     $this->log("irspy", "beginnning with test '$topname' (timeout $timeout)");
 
     my $nskipped = 0;
@@ -365,10 +443,12 @@ sub check {
     while (1) {
 	my @copy_conn = @conn;	# avoid alias problems after splice()
 	my $nconn = scalar(@copy_conn);
+
 	foreach my $i0 (0 .. $#copy_conn) {
 	    my $conn = $copy_conn[$i0];
 	    #print "connection $i0 of $nconn/", scalar(@conn), " is $conn\n";
 	    next if !defined $conn;
+
 	    if (!$conn->current_task()) {
 		if (!$conn->next_task()) {
 		    # Out of tasks: we need a new test
@@ -382,19 +462,23 @@ sub check {
 				   "checking for next test after '$address'");
 			$nextaddr = $this->_next_test($address);
 		    }
+
+                    if (ZOOM::IRSpy::Test::zoom_error_timeout_check($conn)) {
+		        $conn->log("irspy", "Got to many timeouts, stop testing");
+		        undef $nextaddr;
+                    }
+
 		    if (!defined $nextaddr) {
 			$conn->log("irspy", "has no more tests: removing");
-			$this->_rewrite_record($conn);
+			$this->_rewrite_irspy_record($conn);
 			$conn->option(rewrote_record => 1);
-			if (@{ $this->{queue} } == 0) {
-			    # Do not destroy: we need this for later sanity checks
+			my $newconn = $this->_next_connection();
+			if (!defined $newconn) {
+			    # Do not destroy: needed for later sanity checks
 			    splice @conn, $i0, 1;
 			} else {
 			    $conn->destroy();
-			    $conn[$i0] = create
-				ZOOM::IRSpy::Connection($this,
-					shift @{ $this->{queue} }, async => 1,
-							timeout => $timeout);
+			    $conn[$i0] = $newconn;
 			    $conn[$i0]->option(current_test_address => "");
 			    $conn[$i0]->log("irspy", "entering active pool - ",
 					    scalar(@{ $this->{queue} }),
@@ -425,6 +509,13 @@ sub check {
 
 		my $task = $conn->next_task();
 		die "no next task queued for $conn" if !defined $task;
+
+	        # do not run the next task if we got too many timeouts
+                if (ZOOM::IRSpy::Test::zoom_error_timeout_check($conn)) {
+                    $conn->log("irspy_task", "Got to many timeouts for this target, do not start a new task");
+                    next;
+                }
+
 		$conn->log("irspy_task", "preparing task $task");
 		$conn->next_task(0);
 		$conn->current_task($task);

@@ -1,4 +1,3 @@
-%# $Id: delete.mc,v 1.7 2007/06/27 11:09:32 mike Exp $
 <%args>
 $id
 $really => 0
@@ -10,12 +9,13 @@ $really => 0
       <% xml_encode($id) %>?
      </p>
      <p>
-      <a href="?really=1&amp;id=<% xml_encode(uri_escape($id)) %>">Yes</a><br/>
-      <a href="/full.html?id=<% xml_encode(uri_escape($id)) %>">No</a><br/>
+      <a href="?really=1&amp;id=<% xml_encode(uri_escape_utf8($id)) %>">Yes</a><br/>
+      <a href="/full.html?id=<% xml_encode(uri_escape_utf8($id)) %>">No</a><br/>
      </p>
 % } else {
 <%perl>
-    my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1", 0,
+    my $db = ZOOM::IRSpy::connect_to_registry();
+    my $conn = new ZOOM::Connection($db, 0,
 				    user => "admin", password => "fruitbat",
 				    elementSetName => "zeerex");
     ZOOM::IRSpy::_delete_record($conn, $id);

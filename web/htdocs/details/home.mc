@@ -1,4 +1,3 @@
-%# $Id: home.mc,v 1.9 2007/04/18 12:05:45 mike Exp $
      <div class="essay">
      <h2>The Z39.50 Target Directory</h2>
      <p>
@@ -7,7 +6,7 @@
 	>ANSI/NISO Z39.50 (ISO 23950)</a>
       and
       <a href="http://www.loc.gov/sru"
-	>the SRU/SRW</a>.
+	>SRU/SRW</a>
       targets known to us. The tables show the name, address, port,
       reliability info, search attributes and other data useful
       for achieving interoperability.
@@ -21,7 +20,8 @@
       is not represented in our directory, please add it or send us
       email with the details. Also, if you should happen to find an
       error in our data or have additional information, please don't
-      hesitate to contact us so that we can make the target
+      hesitate to <a href="mailto:irspy@indexdata.com">contact us</a>
+      so that we can make the target
       information as accurate and comprehensive as possible.
      </p>
      <p>

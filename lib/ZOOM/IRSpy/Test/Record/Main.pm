@@ -1,4 +1,3 @@
-# $Id: Main.pm,v 1.1 2006/10/23 13:54:52 sondberg Exp $
 
 package ZOOM::IRSpy::Test::Record::Main;
 
@@ -24,7 +23,7 @@ I<## To follow>
 
 =cut
 
-sub subtests { qw(Record::Fetch) }
+sub subtests { qw(Record::Fetch Record::OPAC) }
 
 sub start {
     my $class = shift();

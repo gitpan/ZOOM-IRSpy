@@ -1,4 +1,3 @@
-%# $Id: stats.mc,v 1.6 2007/01/24 09:28:02 mike Exp $
 <%doc>
 Here are the headings in the Z-Spy version:
 	The ten most commonly supported Bib-1 Use attributes
@@ -27,8 +26,9 @@ my $from_cache = 1;
 my $stats = $m->cache->get($key);
 if (!defined $stats || $reload) {
     $from_cache = 0;
-    $stats = new ZOOM::IRSpy::Stats("localhost:8018/IR-Explain---1", $query);
-    $m->cache->set($key, $stats, "10 minutes");
+    my $db = ZOOM::IRSpy::connect_to_registry();
+    $stats = new ZOOM::IRSpy::Stats($db, $query);
+    $m->cache->set($key, $stats, "1 day");
 }
 </%perl>
      <h2>Statistics for <% xml_encode($stats->{host}) %></h2>
@@ -40,12 +40,12 @@ if (!defined $stats || $reload) {
      <p>Recalculating stats</p>
 % }
 <& table, stats => $stats, data => "bib1AccessPoints",
-	title => "The ten most commonly supported Bib-1 Use attributes",
-	headings => [ "Attribute", "Name"],
+	title => "The twenty most commonly supported Bib-1 Use attributes",
+	headings => [ "Attribute", "Name"], maxrows => 20, 
 	col3 => sub { bib1_access_point(@_) } &>
 <& table, stats => $stats, data => "recordSyntaxes",
 	title => "Record syntax support by database",
-	headings => [ "Record Syntax"] &>
+	headings => [ "Record Syntax"], maxrows => 30 &>
 <& table, stats => $stats, data => "explain",
 	title => "Explain Support",
 	headings => [ "Explain Category"] &>
@@ -55,6 +55,9 @@ if (!defined $stats || $reload) {
 <& table, stats => $stats, data => "domains",
 	title => "Top Domains",
 	headings => [ "Top Domain"] &>
+<& table, stats => $stats, data => "implementation",
+	title => "Implementation",
+	headings => [ "Name" ], maxrows => 20 &>
 %#
 %#
 <%def table>
@@ -62,6 +65,7 @@ if (!defined $stats || $reload) {
 $stats
 $data
 $title
+$maxrows => 10
 @headings
 $col3 => undef
 </%args>
@@ -79,13 +83,13 @@ $col3 => undef
 my $hr;
 $hr = $stats->{$data};
 my @sorted = sort { $hr->{$b} <=> $hr->{$a} || $a <=> $b } keys %$hr;
-my $n = @sorted; $n = 10 if @sorted > 10;
+my $n = @sorted; $n = $maxrows if @sorted > 10 && $n > $maxrows;
 foreach my $i (1..$n) {
     my $key = $sorted[$i-1];
 </%perl>
       <tr>
        <td><% $i %></td>
-       <td><% xml_encode($key, "HUH?") %></td>
+       <td><% xml_encode(substr($key, 0, 54), "HUH?") %></td>
 % if (defined $col3) {
        <td><% xml_encode(&$col3($key), "HUH2?") %></td>
 % }

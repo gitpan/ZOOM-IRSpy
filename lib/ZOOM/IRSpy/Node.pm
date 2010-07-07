@@ -1,4 +1,3 @@
-# $Id: Node.pm,v 1.6 2007/02/28 17:34:54 mike Exp $
 
 package ZOOM::IRSpy::Node;
 
@@ -6,6 +5,7 @@ use 5.008;
 use strict;
 use warnings;
 
+use Scalar::Util;
 
 =head1 NAME
 
@@ -57,13 +57,15 @@ changed.
 sub new {
     my $class = shift();
     my($name, @subnodes) = @_;
-    return bless {
+    my $this = bless {
 	name => $name,
 	subnodes => \@subnodes,
 	address => undef,	# filled in by resolve()
 	previous => undef,	# filled in by resolve()
 	next => undef,		# filled in by resolve()
     }, $class;
+
+    return $this;
 }
 
 =head2 name()

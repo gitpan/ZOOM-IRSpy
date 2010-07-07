@@ -1,4 +1,3 @@
-# $Id: Record.pm,v 1.25 2007/05/04 12:09:24 mike Exp $
 
 package ZOOM::IRSpy::Record;
 ### I don't think there's any reason for this to be separate from
@@ -8,6 +7,7 @@ use 5.008;
 use strict;
 use warnings;
 
+use Scalar::Util;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
 use ZOOM::IRSpy::Utils qw(xml_encode isodate irspy_xpath_context);
@@ -36,14 +36,21 @@ sub new {
 
     ### Parser should be in the IRSpy object
     my $parser = new XML::LibXML();
-    return bless {
+    my $this = bless {
 	irspy => $irspy,
 	target => $target,
 	parser => $parser,
 	zeerex => $parser->parse_string($zeerex)->documentElement(),
+	zoom_error => { TIMEOUT => 0 },
     }, $class;
+
+    #Scalar::Util::weaken($this->{irspy});
+    #Scalar::Util::weaken($this->{parser});
+
+    return $this;
 }
 
+sub zoom_error { return shift->{'zoom_error'} }
 
 sub _empty_zeerex_record {
     my($target) = @_;
@@ -82,7 +89,8 @@ sub append_entry {
 	# fully general version would work its way through each
 	# component of the XPath, but for now we just treat it as a
 	# single chunk to go inside the top-level node.
-	$this->_half_decent_appendWellBalancedChunk($xc, "<$xpath></$xpath>");
+	$this->_half_decent_appendWellBalancedChunk($xc->getContextNode(),
+						    "<$xpath></$xpath>");
 	@nodes = $xc->findnodes($xpath);
 	die("still no matches for '$xpath' after creating: can't append")
 	    if @nodes == 0;
@@ -146,7 +154,12 @@ sub _half_decent_appendWellBalancedChunk {
 
     if (1) {
 	$frag =~ s,>, xmlns:irspy="$ZOOM::IRSpy::Utils::IRSPY_NS">,;
-	$node->appendWellBalancedChunk($frag);
+	eval {
+	    $node->appendWellBalancedChunk($frag);
+	}; if ($@) {
+	    print STDERR "died while trying to appendWellBalancedChunk(), probably due to bad XML:\n$frag";
+	    die $@;
+	}
 	return;
     }
 

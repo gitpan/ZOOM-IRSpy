@@ -1,4 +1,3 @@
-%# $Id: edit.mc,v 1.34 2007/05/03 12:54:18 mike Exp $
 <%args>
 $op
 $id => undef ### should be extracted using utf8param()
@@ -32,18 +31,30 @@ duplicate ID.
 die "op = new but id defined" if $op eq "new" && defined $id;
 die "op != new but id undefined" if $op ne "new" && !defined $id;
 
-my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1", 0,
+my $db = ZOOM::IRSpy::connect_to_registry();
+my $conn = new ZOOM::Connection($db, 0,
 				user => "admin", password => "fruitbat",
 				elementSetName => "zeerex");
 
-my $protocol = utf8param($r, "protocol");
-my $host = utf8param($r, "host");
-my $port = utf8param($r, "port");
-my $dbname = utf8param($r, "dbname");
+my $protocol = utf8paramTrim($r, "protocol");
+my $host = utf8paramTrim($r, "host");
+my $port = utf8paramTrim($r, "port");
+my $dbname = utf8paramTrim($r, "dbname");
+my $title = utf8paramTrim($r, "title");
+
+if ((!defined $port || $port eq "") &&
+    (defined $protocol && $protocol ne "")) {
+    # Port-guessing based on defaults for each protocol
+    $port = $protocol eq "Z39.50" ? 210 : 80;
+    warn "guessed port $port";
+    &utf8param($r, port => $port);
+}
+
 my $newid;
 if (defined $protocol && $protocol ne "" &&
     defined $host && $host ne "" &&
     defined $port && $port ne "" &&
+    defined $title && $title ne "" &&
     defined $dbname && $dbname ne "") {
     $newid = irspy_make_identifier($protocol, $host, $port, $dbname);
 }
@@ -57,14 +68,24 @@ if (!defined $id) {
     } elsif (!defined $newid) {
 	# Tried to create new record but data is insufficient
 	print qq[<p class="error">
-		Please specify protocol, host, port and database name.</p>\n];
+		Please specify title, protocol, host, port and database name.</p>\n];
 	undef $update;
+    } elsif ($host !~ /^\w+\.[\w.]*\w$/i) {
+	print qq[<p class="error">
+		This host name is not valid.</p>\n];
+	undef $update;
+	sleep 25;
+    } elsif ($port !~ /^\d*$/i) {
+	print qq[<p class="error">
+		This port number is not valid.</p>\n];
+	undef $update;
+	sleep 25;
     } else {
 	# Creating new record, all necessary data is present.  Check
 	# that the new record is not a duplicate of an existing one.
 	my $rs = $conn->search(new ZOOM::Query::CQL(cql_target($newid)));
 	if ($rs->size() > 0) {
-	    my $qnewid = xml_encode(uri_escape($newid));
+	    my $qnewid = xml_encode(uri_escape_utf8($newid));
 	    print qq[<p class="error">
 		There is already
 		<a href='?op=edit&amp;id=$newid'>a record</a>
@@ -316,14 +337,16 @@ my @fields =
        qw(e:title e:description) ],
      [ subjects     => 2, "Subjects", "e:databaseInfo/e:subjects",
        qw(e:title e:description) ],
+     [ disabled     => [ qw(0 1) ],
+       "Target Test Disabled", "i:status/i:disabled" ],
      );
 
 # Update record with submitted data
 my %fieldsByKey = map { ( $_->[0], $_) } @fields;
 my %data;
-foreach my $key ($r->param()) {
+foreach my $key (&utf8param($r)) {
     next if grep { $key eq $_ } qw(op id update);
-    $data{$key} = utf8param($r, $key);
+    $data{$key} = trimField( utf8param($r, $key) );
 }
 my @changedFields = modify_xml_document($xc, \%fieldsByKey, \%data);
 if ($update && @changedFields) {
@@ -333,7 +356,7 @@ if ($update && @changedFields) {
 					     "e:metaInfo/e:dateModified" ] },
 				{ dateModified => isodate(time()) });
     die "Didn't set dateModified!" if !@x;
-    ZOOM::IRSpy::_really_rewrite_record($conn, $xc->getContextNode(),
+    ZOOM::IRSpy::_rewrite_zeerex_record($conn, $xc->getContextNode(),
 					$op eq "edit" ? $id : undef);
 }
 
@@ -346,7 +369,14 @@ if ($update && @changedFields) {
   Changed <% $nchanges %> field<% $nchanges == 1 ? "" : "s" %>:
   <% join(", ", map { xml_encode($_->[2]) } @changedFields) %>.
  </p>
+% return if $op eq "new";
 % }
+ <p>
+  Although anyone is allowed to add a new target, please note that
+  <b>you will not be able to edit the newly added target unless you
+  have administrator privileges</b>.  So please be sure that the
+  details are correct before submitting them.
+ </p>
  <form method="get" action="">
   <table class="fullrecord" border="1" cellspacing="0" cellpadding="5" width="100%">
 <%perl>

@@ -1,4 +1,3 @@
-# $Id: Connection.pm,v 1.16 2007/05/01 16:30:17 mike Exp $
 
 package ZOOM::IRSpy::Connection;
 
@@ -47,9 +46,22 @@ sub create {
     $this->{tasks} = [];
 
     my $query = cql_target($id);
-    my $rs = $irspy->{conn}->search(new ZOOM::Query::CQL($query));
+    my $rs;
+    eval {
+	$rs = $irspy->{conn}->search(new ZOOM::Query::CQL($query));
+    }; if ($@) {
+	# This should be a "can't happen", but junk entries such as
+	#	//lucasportal.info/blogs/payday-usa">'</a>night:G<a href="http://lucasportal.info/blogs/payday-usa">'</a>night/Illepeliz
+	# (yes, really) yield BIB-1 diagnostic 108 "Malformed query"
+	warn "registry search for record '$id' had error: '$@' -- skipping";
+	return undef;
+    }
     my $n = $rs->size();
-    $this->log("irspy", "query '$query' found $n records");
+    $this->log("irspy", "query '$query' found $n record", $n==1 ? "" : "s");
+    ### More than 1 hit is always an error and indicates duplicate
+    #   records in the database; no hits is fine for a new target
+    #   being probed for the first time, but not if the connection is
+    #   being created as part of an "all known targets" scan.
     my $zeerex;
     $zeerex = render_record($rs, 0, "zeerex") if $n > 0;
     $this->{record} = new ZOOM::IRSpy::Record($this, $target, $zeerex);
@@ -136,6 +148,7 @@ sub irspy_search {
     my $this = shift();
     my($qtype, $qstr, $udata, $options, %cb) = @_;
 
+    { use Carp; confess "Odd-sized hash!" if @_ % 2; }
     #warn "calling $this->irspy_search(", join(", ", @_), ")\n";
     $this->add_task(new ZOOM::IRSpy::Task::Search
 		    ($qtype, $qstr, $this, $udata, $options, %cb));

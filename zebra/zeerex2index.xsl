@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- $Id: zeerex2index.xsl,v 1.14 2007/04/27 14:04:40 mike Exp $ -->
 <!-- See the ZeeRex profile at http://srw.cheshire3.org/profiles/ZeeRex/ -->
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
                 xmlns:z="http://indexdata.dk/zebra/xslt/1"
@@ -43,6 +42,10 @@
     <xsl:value-of select="$id"/>
    </z:index>
 
+   <z:index name="rec:id_raw" type="0">
+    <xsl:value-of select="$id"/>
+   </z:index>
+
    <!-- serverInfo -->
    <z:index name="net:protocol" type="w">
     <xsl:value-of select="e:serverInfo/@protocol"/>
@@ -70,6 +73,9 @@
    </z:index>
    <z:index name="net:path" type="s">
     <xsl:value-of select="e:serverInfo/e:database"/>
+   </z:index>
+   <z:index name="zeerex:reliability" type="n">
+    <xsl:value-of select="e:serverInfo/e:reliability"/>
    </z:index>
    <z:index name="dc:date" type="d">
     <xsl:value-of select="e:serverInfo/e:database/@lastUpdate"/>
@@ -104,10 +110,15 @@
     <xsl:value-of select="e:metaInfo/e:dateModified"/>
    </z:index>
 
-   <!-- ### indexInfo -->
+   <!-- indexInfo -->
+   <xsl:for-each select="e:indexInfo/e:index/e:map/e:attr">
+    <z:index name="zeerex:index" type="w">
+     <xsl:value-of select="."/>
+    </z:index>
+   </xsl:for-each>
 
    <!-- recordInfo -->
-   <z:index name="zeerex:recordSyntax" type="0">
+   <z:index name="zeerex:recordSyntax" type="w">
     <xsl:value-of select="e:recordInfo/e:recordSyntax/@name"/>
     <!-- ### But @identifier is an OID for Z39.50 -->
    </z:index>
@@ -142,6 +153,9 @@
    </z:index>
    <z:index name="zeerex:country" type="0">
     <xsl:value-of select="i:status/i:country"/>
+   </z:index>
+   <z:index name="zeerex:disabled" type="0">
+    <xsl:value-of select="i:status/i:disabled"/>
    </z:index>
 
   </z:record>

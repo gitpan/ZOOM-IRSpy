@@ -1,4 +1,3 @@
-%# $Id: found.mc,v 1.31 2007/07/04 20:54:11 mike Exp $
 <%once>
 sub print_navlink {
     my($params, $cond, $caption, $skip) = @_;
@@ -19,27 +18,11 @@ sub navlink {
     return $url;
 }
 
-# Identical to the same-named function in full.mc
-# So maybe this should go into IRSpy::Utils.pm?
-# Name changed (append 2) to prevent inadvertent clashes in Mason namespace
-#
-sub calc_reliability2 {
-    my($xc) = @_;
-
-    my @allpings = $xc->findnodes("i:status/i:probe");
-    my $nall = @allpings;
-    return "[untested]" if $nall == 0;
-    my @okpings = $xc->findnodes('i:status/i:probe[@ok = "1"]');
-    my $nok = @okpings;
-    return "$nok/$nall = " . int(100*$nok/$nall) . "%";
-}
-
-
 # Just make this once; forge the connection on first use
 our $conn = undef;
 </%once>
 <%perl>
-my %params = map { ( $_, utf8param($r, $_)) } grep { $r->param($_) } $r->param();
+my %params = map { ( $_, utf8param($r, $_)) } grep { &utf8param($r, $_) } &utf8param($r);
 my $query;
 if ($params{_query}) {
     $query = $params{_query};
@@ -70,8 +53,10 @@ if ($sort) {
 my $tried_to_open = 0;
 if (!defined $conn) {
   OPEN:
-    $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1");
+    my $db = ZOOM::IRSpy::connect_to_registry();
+    $conn = new ZOOM::Connection($db);
     $conn->option(elementSetName => "zeerex");
+    $conn->option(count => 20);
 }
 
 my $rs;
@@ -116,7 +101,7 @@ print_navlink(\%params, $last < $n, "Next", $skip+$count);
       <tr class="thleft">
        <th>#</th>
        <th>Title</th>
-       <th>Reliability <& /help/link.mc, help => "info/reliability" &>
+       <th>Host Connection Reliability <& /help/link.mc, help => "info/reliability" &>
        </th>
        <th>Host</th>
        <th>Port</th>
@@ -125,11 +110,12 @@ print_navlink(\%params, $last < $n, "Next", $skip+$count);
        <th></th>
       </tr>
 % my @ids;
+% $rs->records($first-1, $last-$first+1); ## Force pre-cache
 % foreach my $i ($first .. $last) {
 <%perl>
 my $xc = irspy_xpath_context($rs->record($i-1));
 my $title = $xc->find("e:databaseInfo/e:title") || "[UNTITLED]";
-my $reliability = calc_reliability2($xc);
+my $reliability = calc_reliability_string($xc);
 my $host = $xc->find("e:serverInfo/e:host");
 my $port = $xc->find("e:serverInfo/e:port");
 my $db = $xc->find("e:serverInfo/e:database");
@@ -138,19 +124,19 @@ push @ids, $id;
 </%perl>
       <tr style="background: <% ($i % 2) ? '#ffffc0' : 'white' %>">
        <td><% $i %></td>
-       <td><a href="<% xml_encode("/full.html?id=" . uri_escape($id))
+       <td><a href="<% xml_encode("/full.html?id=" . uri_escape_utf8($id))
 		%>"><% xml_encode($title) %></a></td>
        <td><% xml_encode($reliability, "", { nbsp => 1 }) %></td>
        <td><% xml_encode($host, "") %></td>
        <td><% xml_encode($port, "") %></td>
        <td><% xml_encode($db, "") %></td>
        <td>
-	<a href="<% xml_encode("/admin/check.html?id=" . uri_escape($id))
+	<a href="<% xml_encode("/admin/check.html?id=" . uri_escape_utf8($id))
 		%>" title="Test this target">Test</a
 	>&nbsp;<a href="<% xml_encode("/admin/edit.html?op=edit&id=" .
-		uri_escape($id))
+		uri_escape_utf8($id))
 		%>" title="Edit this target's record">Edit</a
-	>&nbsp;<a href="<% xml_encode("/raw.html?id=" . uri_escape($id))
+	>&nbsp;<a href="<% xml_encode("/raw.html?id=" . uri_escape_utf8($id))
 		%>" title="Raw XML record">XML</a>
        </td>
       </tr>
@@ -162,11 +148,11 @@ print_navlink(\%params, $last < $n, "Next", $skip+$count);
 </%perl>
      <p>
       <a href="<% "/admin/check.html?" .
-	xml_encode(join("&", map { "id=" . uri_escape($_) } @ids))
+	xml_encode(join("&", map { "id=" . uri_escape_utf8($_) } @ids))
 	%>">[Test all targets on this list]</a>
      </p>
      <p>
-      <a href="<% "/stats.html?query=" . xml_encode(uri_escape($query))
+      <a href="<% "/stats.html?query=" . xml_encode(uri_escape_utf8($query))
 	%>">[Statistics for targets on this list]</a>
      </p>
 % }

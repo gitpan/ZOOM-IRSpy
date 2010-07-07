@@ -1,4 +1,3 @@
-# $Id: Ping.pm,v 1.27 2007/05/09 11:19:36 mike Exp $
 
 # See the "Main" test package for documentation
 
@@ -14,7 +13,7 @@ our @ISA = qw(ZOOM::IRSpy::Test);
 use ZOOM::IRSpy::Utils qw(isodate);
 
 use Text::Iconv;
-my $conv = new Text::Iconv("LATIN1", "UTF8");
+my $conv = new Text::Iconv("LATIN1", "UTF-8");
 
 
 sub start {
@@ -89,7 +88,7 @@ sub connected {
 sub not_connected {
     my($conn, $__UNUSED_task, $__UNUSED_udata, $exception) = @_;
 
-    $conn->log("irspy_test", "not connected: $exception");
+    $conn->log("irspy", "not connected: $exception");
     $conn->record()->store_result("probe",
 				  ok => 0,
 				  errcode => $exception->code(),

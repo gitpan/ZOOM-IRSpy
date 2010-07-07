@@ -1,4 +1,3 @@
-%# $Id: layout.mc,v 1.35 2007/06/28 13:36:46 mike Exp $
 <%args>
 $debug => undef
 $title
@@ -8,13 +7,14 @@ $component
 use URI::Escape qw(uri_escape uri_escape_utf8);
 use ZOOM;
 use ZOOM::IRSpy::Web;
-use ZOOM::IRSpy::Utils qw(utf8param isodate xml_encode cql_target cql_quote
+use ZOOM::IRSpy::Utils qw(utf8param trimField utf8paramTrim isodate xml_encode cql_target cql_quote
                           irspy_xpath_context irspy_make_identifier
 			  irspy_record2identifier
 			  irspy_identifier2target modify_xml_document
-			  bib1_access_point);
+			  bib1_access_point calc_reliability_string);
 </%once>
 % $r->content_type("text/html; charset=utf-8");
+% my $text = $m->scomp($component, %ARGS);
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html 
      PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
@@ -63,10 +63,10 @@ use ZOOM::IRSpy::Utils qw(utf8param isodate xml_encode cql_target cql_quote
     <td valign="top" class="panel1">
      <p>
       <a href="/"><b>Home</b></a><br/>
-      <a href="/admin/all.html">Test&nbsp;all&nbsp;targets</a><br/>
+      <!-- <a href="/admin/all.html">Test&nbsp;all&nbsp;targets</a><br/> -->
       <a href="/find.html">Find a target</a><br/>
-      <a href="/admin/edit.html?op=new">Add a target</a><br/>
-      <a href="/admin/upload.html">Upload a target</a><br/>
+      <a href="/add_target.html">Add a target</a><br/>
+      <a href="/upload.html">Upload a target</a><br/>
       <a href="/stats.html">Statistics</a><br/>
      </p>
      <p>
@@ -102,20 +102,20 @@ my $id = utf8param($r, "id");
      <div class="panel2">
       <b>This Target</b>
       <br/>
-      <a href="<% xml_encode("/full.html?id=" . uri_escape($id)) %>">Show details</a>
+      <a href="<% xml_encode("/full.html?id=" . uri_escape_utf8($id)) %>">Show details</a>
       <br/>
-      <a href="<% xml_encode("/admin/edit.html?op=edit&id=" . uri_escape($id)) %>">Edit details</a>
+      <a href="<% xml_encode("/admin/edit.html?op=edit&id=" . uri_escape_utf8($id)) %>">Edit details</a>
       <br/>
-      <a href="<% xml_encode("/admin/edit.html?op=copy&id=" . uri_escape($id)) %>">Copy target</a>
+      <a href="<% xml_encode("/admin/edit.html?op=copy&id=" . uri_escape_utf8($id)) %>">Copy target</a>
       <br/>
-      <a href="<% xml_encode("/admin/delete.html?id=" . uri_escape($id)) %>">Delete target</a>
+      <a href="<% xml_encode("/admin/delete.html?id=" . uri_escape_utf8($id)) %>">Delete target</a>
       <p>
-       <a href="<% xml_encode("/admin/check.html?id=" . uri_escape($id)) . "&amp;test=Quick" %>">Quick Test</a>
+       <a href="<% xml_encode("/admin/check.html?id=" . uri_escape_utf8($id)) . "&amp;test=Quick" %>">Quick Test</a>
        <br/>
-       <a href="<% xml_encode("/admin/check.html?id=" . uri_escape($id)) . "&amp;test=Main" %>">Full Test</a>
+       <a href="<% xml_encode("/admin/check.html?id=" . uri_escape_utf8($id)) . "&amp;test=Main" %>">Full Test</a>
       </p>
       <p>
-       <a href="<% xml_encode("/raw.html?id=" . uri_escape($id)) %>">XML</a>
+       <a href="<% xml_encode("/raw.html?id=" . uri_escape_utf8($id)) %>">XML</a>
       </p>
 <%doc><!-- Maybe this would be too heavyweight -->
       <br/>
@@ -144,7 +144,7 @@ my $id = utf8param($r, "id");
     </td>
     <td class="spacer">&nbsp;</td>
     <td valign="top">
-<& $component, %ARGS &>
+% print $text;
     </td>
    </tr>
   </table>
@@ -154,7 +154,11 @@ my $id = utf8param($r, "id");
    <small>
     Powered by <a style="text-decoration: none"
 	href="http://indexdata.com/"
-	>Index&nbsp;Data</a>
+	>Index&nbsp;Data</a>.
+    <br/>
+    Report errors and omissions to <a style="text-decoration: none"
+	href="mailto:irspy@indexdata.com"
+	            >irspy@indexdata.com</a>
    </small>
   </div>
  </body>

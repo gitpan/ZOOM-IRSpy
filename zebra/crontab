@@ -1,3 +1,8 @@
-# $Id: crontab,v 1.2 2007/01/24 09:28:03 mike Exp $
+# Example crontab file for a weekly update cycle, testing 1/7 of the 
+# database every day. 
+#
 # m h  dom mon dow   command
-0 3 * * * cd /usr/local/src/cvs/irspy/bin && YAZ_LOG=irspy,irspy_test perl -I ../lib irspy.pl -t Full localhost:8018/IR-Explain---1 indexdata.com:210/marc indexdata.com:210/gils
+# a full update on Monday morning
+6 0 * * 1 /usr/local/src/git/irspy/bin/irspy-update.sh
+# a quick update on Wed/Fri
+6 0 * * 3,5 env irspy_test=Quick /usr/local/src/git/irspy/bin/irspy-update.sh

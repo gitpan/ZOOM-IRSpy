@@ -1,13 +1,14 @@
-%# $Id: raw.html,v 1.9 2007/05/11 13:53:40 mike Exp $
 <%args>
 $id
 </%args>
 <%once>
 use ZOOM;
-use ZOOM::IRSpy::Utils qw(cql_target);
+use ZOOM::IRSpy;
+use ZOOM::IRSpy::Utils qw(cql_target xml_encode);
 </%once>
 <%perl>
-my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1");
+my $db = ZOOM::IRSpy::connect_to_registry();
+my $conn = new ZOOM::Connection($db);
 $conn->option(elementSetName => "zeerexNoAuth");
 my $rs = $conn->search(new ZOOM::Query::CQL(cql_target($id)));
 my $n = $rs->size();

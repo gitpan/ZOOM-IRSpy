@@ -1,10 +1,11 @@
-# $Id: Stats.pm,v 1.6 2007/01/24 09:28:02 mike Exp $
 
 package ZOOM::IRSpy::Stats;
 
 use 5.008;
 use strict;
 use warnings;
+
+use Scalar::Util;
 use ZOOM::IRSpy::Utils qw(irspy_xpath_context);
 
 =head1 NAME
@@ -112,7 +113,7 @@ sub _gather_stats {
 
 	# Record syntax support by database
 	foreach my $node ($xc->findnodes('e:recordInfo/e:recordSyntax/@name')) {
-	    $this->{recordSyntaxes}->{$node->findvalue(".")}++;
+	    $this->{recordSyntaxes}->{lc($node->findvalue("."))}++;
 	}
 
 	# Explain support
@@ -134,10 +135,16 @@ sub _gather_stats {
 	# Top Domains
 	my $host = $xc->findvalue('e:serverInfo/e:host');
 	$host =~ s/.*\.//;
-	$this->{domains}->{$host}++;
+	$this->{domains}->{lc($host)}++;
 
 	# Implementation
-	### Requires XSLT fix
+	foreach my $node ($xc->findnodes('i:status/i:serverImplementationName/@value')) {
+	    $this->{implementation}->{$node->findvalue(".")}++;
+	    last; # This is because many of the records are still
+	          # polluted with multiple implementationName elements
+	          # from back then XSLT stylesheet that generated
+	          # ZeeRex records was wrong.
+	}
     }
 }
 
@@ -194,6 +201,14 @@ sub print {
 
     print "\nTOP-LEVEL DOMAINS\n";
     $hr = $this->{domains};
+    foreach my $key (sort { $hr->{$b} <=> $hr->{$a} 
+			    || $a cmp $b } keys %$hr) {
+	print sprintf("%-26s%5d (%d%%)\n",
+		      $key, $hr->{$key}, 100*$hr->{$key}/$this->{n});
+    }
+
+    print "\nIMPLEMENTATIONS\n";
+    $hr = $this->{implementation};
     foreach my $key (sort { $hr->{$b} <=> $hr->{$a} 
 			    || $a cmp $b } keys %$hr) {
 	print sprintf("%-26s%5d (%d%%)\n",

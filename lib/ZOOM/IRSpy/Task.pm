@@ -1,10 +1,11 @@
-# $Id: Task.pm,v 1.6 2007/05/09 11:30:53 mike Exp $
 
 package ZOOM::IRSpy::Task;
 
 use 5.008;
 use strict;
 use warnings;
+
+use Scalar::Util;
 
 =head1 NAME
 
@@ -34,7 +35,7 @@ sub new {
     my $class = shift();
     my($conn, $udata, $options, %cb) = @_;
 
-    return bless {
+    my $this = bless {
 	irspy => $conn->{irspy},
 	conn => $conn,
 	udata => $udata,
@@ -42,6 +43,11 @@ sub new {
 	cb => \%cb,
 	timeRegistered => time(),
     }, $class;
+
+    #Scalar::Util::weaken($this->{irspy});
+    #Scalar::Util::weaken($this->{udata});
+
+    return $this;
 }
 
 
@@ -74,9 +80,9 @@ sub run {
 #
 # As a special case, options in the task's option-hash whose names
 # begin with an asterisk are taken to be persistent: they are set into
-# the Connection (with the leading hash removed) and deleted from the
-# task's option-hash so that they will NOT be reset the next time this
-# function is called.
+# the Connection (with the leading asterisk removed) and deleted from
+# the task's option-hash so that they will NOT be reset the next time
+# this function is called.
 #
 sub set_options {
     my $this = shift();
@@ -89,7 +95,6 @@ sub set_options {
 			   defined $value ? "'$value'" : "undefined");
 	my $old = $this->conn()->option($key, $value);
 	if ($persistent) {
-	    print "deleting '*$key'<br/>\n";
 	    delete $this->{options}->{"*$key"}
 	} else {
 	    $this->{options}->{$key} = $old;

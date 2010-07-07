@@ -1,4 +1,3 @@
-# $Id: Retrieve.pm,v 1.6 2007/05/09 11:05:30 mike Exp $
 
 package ZOOM::IRSpy::Task::Retrieve;
 
@@ -48,7 +47,8 @@ sub run {
     my $rs = $this->{rs};
     my $index0 = $this->{index0};
     $this->irspy()->log("irspy_task", $conn->option("host"),
-			" retrieving record $index0 from $rs");
+			" retrieving record $index0 from $rs, rs='",
+			$rs->option("preferredRecordSyntax"), "'");
     $rs->records($index0, 1, 0); # requests record
     warn "no ZOOM-C level events queued by $this"
 	if $conn->is_idle();

@@ -1,4 +1,3 @@
-# $Id: Utils.pm,v 1.35 2007/06/28 13:59:31 sondberg Exp $
 
 package ZOOM::IRSpy::Utils;
 
@@ -6,8 +5,12 @@ use 5.008;
 use strict;
 use warnings;
 
+use Scalar::Util;
+
 use Exporter 'import';
 our @EXPORT_OK = qw(utf8param
+		    trimField
+		    utf8paramTrim
 		    isodate
 		    xml_encode 
 		    cql_quote
@@ -18,7 +21,10 @@ our @EXPORT_OK = qw(utf8param
 		    irspy_identifier2target
 		    modify_xml_document
 		    bib1_access_point
-		    render_record);
+		    render_record
+		    validate_record
+		    calc_reliability_string
+		    calc_reliability_stats);
 
 use XML::LibXML;
 use XML::LibXML::XPathContext;
@@ -28,9 +34,59 @@ use Encode qw(is_utf8);
 
 our $IRSPY_NS = 'http://indexdata.com/irspy/1.0';
 
+# Under Apache 2/mod_perl 2, the ubiquitous $r is no longer and
+# Apache::Request object, nor even an Apache2::Request, but an
+# Apache2::RequestReq ... which, astonishingly, doesn't have the
+# param() method.  So if we're given one of these things, we need to
+# make an Apache::Request out of, which at least isn't too hard.
+# However *sigh* this may not be a cheap operation, so we keep a cache
+# of already-made Request objects.
+#
+my %_apache2request;
+my %_paramsbyrequest;           # Used for Apache2 only
+sub utf8param {
+    my($r, $key, $value) = @_;
+
+    if ($r->isa('Apache2::RequestRec')) {
+        # Running under Apache2
+        if (defined $_apache2request{$r}) {
+            #warn "using existing Apache2::RequestReq for '$r'";
+            $r = $_apache2request{$r};
+        } else {
+            require Apache2::Request;
+            #warn "making new Apache2::RequestReq for '$r'";
+            $r = $_apache2request{$r} = new Apache2::Request($r);
+        }
+    }
+
+    if (!defined $key) {
+        return map { decode_utf8($_) } $r->param();
+    }
+
+    my $raw = undef;
+    $raw = $_paramsbyrequest{$r}->{$key} if $r->isa('Apache2::Request');
+    $raw = $r->param($key) if !defined $raw;
+
+    if (defined $value) {
+        # Argh!  Simply writing through to the underlying method
+        # param() won't work in Apache2, where param() is readonly.
+        # So we have to keep a hash of additional values, which we
+        # consult (above) before the actual parameters.  Ouch ouch.
+        if ($r->isa('Apache2::Request')) {
+            $_paramsbyrequest{$r}->{$key} = encode_utf8($value);
+        } else {
+            $r->param($key, encode_utf8($value));
+        }
+    }
+
+    return undef if !defined $raw;
+    my $cooked = decode_utf8($raw);
+    warn "converted '$raw' to '", $cooked, "'\n" if $cooked ne $raw;
+    return $cooked;
+}
 
 # Utility functions follow, exported for use of web UI
-sub utf8param {
+sub utf8param_apache1 {
     my($r, $key, $value) = @_;
     die "utf8param() called with value '$value'" if defined $value;
 
@@ -50,6 +106,26 @@ sub isodate {
 		   $year+1900, $mon+1, $mday, $hour, $min, $sec);
 }
 
+# strips whitespaces at start and ends of a field
+sub trimField {
+    my $field  = shift;
+
+    $field =~ s/^\s+//;
+    $field =~ s/\s+$//;
+
+    return $field;
+}
+
+# utf8param() with trim
+sub utf8paramTrim {
+    my $result = utf8param(@_);
+
+    if (defined $result) {
+	$result = trimField($result);	
+    }
+
+    return $result;
+}
 
 # I can't -- just can't, can't, can't -- believe that this function
 # isn't provided by one of the core XML modules.  But the evidence all
@@ -105,6 +181,7 @@ sub cql_target {
     }
 
     return "rec.id=" . cql_quote($id);
+    #return "rec.id_raw=" . cql_quote($id);
 }
 
 
@@ -205,19 +282,28 @@ sub irspy_identifier2target {
 sub _irspy_identifier2target {
     my($id) = @_;
 
-    my($protocol, $target) = ($id =~ /(.*?):(.*)/);
-    if (uc($protocol) eq "Z39.50") {
-	return "tcp:$target";
+    confess "_irspy_identifier2target(): id is undefined"
+	if !defined $id;
+
+    my($prefix, $protocol, $target) = ($id =~ /([^:]*,)?(.*?):(.*)/);
+    $prefix ||= "";
+    if (uc($protocol) eq "Z39.50" || uc($protocol) eq "TCP") {
+	return "${prefix}tcp:$target";
     } elsif (uc($protocol) eq "SRU") {
-	return "sru=get,http:$target";
+	return "${prefix}sru=get,http:$target";
     } elsif (uc($protocol) eq "SRW") {
-	return "sru=srw,http:$target";
+	return "${prefix}sru=srw,http:$target";
     }
 
-    warn "unrecognised protocol '$protocol' in ID $id";
+    warn "_irspy_identifier2target($id): unrecognised protocol '$protocol'";
     return $target;
 }
 
+
+# Modifies the XML document for which $xc is an XPath context by
+# inserting or replacing the values specified in the hash %$data.  The
+# keys are fieldnames, which are looked up in the register
+# $fieldsByKey to determine, among other things, what their XPath is.
 
 sub modify_xml_document {
     my($xc, $fieldsByKey, $data) = @_;
@@ -269,7 +355,7 @@ sub modify_xml_document {
 	    }
 
 	} else {
-	    next if !$value; # No need to create a new empty node
+	    next if !defined $value; # No need to create a new empty node
 	    my($ppath, $selector) = $xpath =~ /(.*)\/(.*)/;
 	    dom_add_node($xc, $ppath, $selector, $value, @addAfter);
 	    #print "New $key ($xpath) = '$value'<br/>\n";
@@ -715,5 +801,77 @@ sub render_record {
     return $rec->render();
 }
 
+
+sub calc_reliability_string {
+    my($xc) = @_;
+
+    my($nok, $nall, $percent) = calc_reliability_stats($xc);
+    return "[untested]" if $nall == 0;
+    return "$nok/$nall = " . $percent . "%";
+}
+
+
+sub calc_reliability_stats {
+    my($xc) = @_;
+
+    my @allpings = $xc->findnodes("i:status/i:probe");
+    my $nall = @allpings;
+    return (0, 0, 0) if $nall == 0;
+    my @okpings = $xc->findnodes('i:status/i:probe[@ok = "1"]');
+    my $nok = @okpings;
+    my $percent = int(100*$nok/$nall + 0.5);
+    return ($nok, $nall, $percent);
+}
+
+#
+# validate_record( record, ( "port" => 1, "database" => 1, "country" => 0, ... ))
+#
+sub validate_record {
+    my $rec = shift;
+    my %args = @_;
+
+    my %required = map { $_ => 1 } qw/port host database protocol/;
+    my %optional = map { $_ => 1 } qw/country type hosturl contact language/;
+    my %tests = ( %required, %args );
+
+    my $xc = irspy_xpath_context($rec);
+
+    my $protocol = $xc->findnodes("e:serverInfo/\@protocol") || "";
+    my $port = $xc->findnodes("e:serverInfo/e:port") || "";
+    my $host = $xc->findnodes("e:serverInfo/e:host") || "";
+    my $dbname = $xc->findnodes("e:serverInfo/e:database") || "";
+
+    my $id = irspy_make_identifier($protocol, $host, $port, $dbname);
+
+    if ($protocol =~ /\s+$/ || $dbname =~ /\s+$/) {
+	warn "xxx: $protocol:$host:$port:$dbname: whitespaces\n";
+    } 
+
+    my @errors = $id;
+
+    if ($tests{'protocol'}) {
+	push(@errors, 'protocol number is not valid') if $protocol !~ /^(z39\.50|sru|srw|tcp)$/i;
+    }
+
+    if ($tests{'port'}) {
+	push(@errors, 'port number is not valid') if $port !~ /^\d+$/;
+    }
+
+    if ($tests{'host'}) {
+	push(@errors, 'host name is not valid') if $host !~ /^[0-9a-z]+[0-9a-z\.\-]*\.[0-9a-z]+$/i;
+    }
+
+    if ($tests{'database'}) {
+	push(@errors, 'database name is not valid') if $dbname =~ m,/,i;
+	push(@errors, 'database has trailing spaces') if $dbname =~ /^\s+|\s+$/;
+    }
+
+    if ($tests{'hosturl'}) {
+        my $hosturl = $xc->findnodes("i:status/i:hostURL") || "";
+	push(@errors, 'This hosturl name is not valid') if $hosturl !~ /^\w+$/i;
+    }
+
+    return ( !$#errors, \@errors );
+}
 
 1;

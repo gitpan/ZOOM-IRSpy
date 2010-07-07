@@ -1,8 +1,15 @@
-%# $Id: upload.mc,v 1.1 2007/06/28 13:37:11 mike Exp $
 <%args>
 $filename => undef
 </%args>
 % if (!defined $filename) {
+   <p>
+    Please note that this form expects a
+    <a href="http://explain.z3950.org/"
+	>ZeeRex record</a>
+    only, not an entire
+    <a href="http://www.loc.gov/standards/sru/explain/"
+	>SRU explainResponse</a>.
+   <p>
    <form method="post" action=""
 	    enctype="multipart/form-data">
     <p>
@@ -15,7 +22,23 @@ $filename => undef
 % return;
 % }
 <%perl>
-my $fin = $r->upload()->fh();
+
+my $fin;
+
+# Apache2.0 
+if ($r->isa('Apache2::RequestRec')) {
+    require Apache2::Request;
+    require Apache2::Upload;
+    my $req = new Apache2::Request($r);
+    my $upload = $req->upload('filename');
+    $fin = $upload->fh();
+} 
+
+# Apache 1.3
+else {
+    $fin = $r->upload()->fh();
+}
+
 if (!defined $fin) {
     $m->comp("/details/error.mc", msg => "Upload cancelled");
     return;
@@ -24,16 +47,17 @@ if (!defined $fin) {
 my $xml = join("", <$fin>);
 my $xc = irspy_xpath_context($xml);
 my $id = irspy_record2identifier($xc);
-my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1", 0,
+my $db = ZOOM::IRSpy::connect_to_registry();
+my $conn = new ZOOM::Connection($db, 0,
 				user => "admin", password => "fruitbat",
 				elementSetName => "zeerex");
-ZOOM::IRSpy::_really_rewrite_record($conn, $xc->getContextNode());
+ZOOM::IRSpy::_rewrite_zeerex_record($conn, $xc->getContextNode());
 </%perl>
      <p>
       Upload OK.
      </p>
      <p>
       Proceed to
-      <a href="<% xml_encode("/full.html?id=" . uri_escape($id))
+      <a href="<% xml_encode("/full.html?id=" . uri_escape_utf8($id))
 	%>">the new record</a>.
      </p>

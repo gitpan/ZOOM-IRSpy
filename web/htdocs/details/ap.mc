@@ -1,10 +1,10 @@
-%# $Id: ap.mc,v 1.1 2007/06/28 12:19:37 mike Exp $
 <%args>
 $id
 $set
 </%args>
 <%perl>
-my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1");
+my $db = ZOOM::IRSpy::connect_to_registry();
+my $conn = new ZOOM::Connection($db);
 $conn->option(elementSetName => "zeerex");
 my $query = cql_target($id);
 my $rs = $conn->search(new ZOOM::Query::CQL($query));

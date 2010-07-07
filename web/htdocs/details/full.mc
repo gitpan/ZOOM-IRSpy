@@ -1,9 +1,9 @@
-%# $Id: full.mc,v 1.30 2007/07/03 13:10:50 mike Exp $
 <%args>
 $id
 </%args>
 <%perl>
-my $conn = new ZOOM::Connection("localhost:8018/IR-Explain---1");
+my $db = ZOOM::IRSpy::connect_to_registry();
+my $conn = new ZOOM::Connection($db);
 $conn->option(elementSetName => "zeerex");
 my $query = cql_target($id);
 my $rs = $conn->search(new ZOOM::Query::CQL($query));
@@ -41,14 +41,16 @@ if ($n == 0) {
 		  [ "Implementation ID" => "i:status/i:implementationId" ],
 		  [ "Implementation Name" => "i:status/i:implementationName" ],
 		  [ "Implementation Version" => "i:status/i:implementationVersion" ],
-		  [ "Reliability/reliability" => \&calc_reliability, $xc ],
+		  [ "Reliability/reliability" => \&calc_reliability_wrapper, $xc ],
 		  [ "Services" => \&calc_init_options, $xc ],
 		  [ "Bib-1 Use attributes" => \&calc_ap, $xc, "bib-1" ],
 		  [ "Dan-1 Use attributes" => \&calc_ap, $xc, "dan-1" ],
+		  [ "Bath Profile searches" => \&calc_bath, $xc ],
 		  [ "Operators" => \&calc_boolean, $xc ],
 		  [ "Named Result Sets" => \&calc_nrs, $xc ],
 		  [ "Record syntaxes" => \&calc_recsyn, $xc ],
 		  [ "Explain" => \&calc_explain, $xc ],
+		  [ "Multiple OPAC records" => \&calc_mor, $xc ],
 		  );
     my $title = $xc->find("e:databaseInfo/e:title");
 </%perl>
@@ -95,15 +97,9 @@ if ($n == 0) {
 % }
 <%perl>
 
-sub calc_reliability {
+sub calc_reliability_wrapper {
     my($id, $xc) = @_;
-
-    my @allpings = $xc->findnodes("i:status/i:probe");
-    my $nall = @allpings;
-    return "[untested]" if $nall == 0;
-    my @okpings = $xc->findnodes('i:status/i:probe[@ok = "1"]');
-    my $nok = @okpings;
-    return "$nok/$nall = " . int(100*$nok/$nall) . "%";
+    return calc_reliability_string($xc);
 }
 
 sub calc_init_options {
@@ -164,6 +160,15 @@ sub _list_ap {
     return sort { $a <=> $b } map { $_->findvalue(".") } @nodes;
 }
 
+sub calc_bath {
+    my($id, $xc) = @_;
+
+    my @nodes = $xc->findnodes('i:status/i:search_bath[@ok = "1"]');
+    my $res = join(", ", map { $_->findvalue('@name') } @nodes);
+    $res = "[none]" if $res eq "";
+    return $res;
+}
+
 sub calc_boolean {
     my($id, $xc) = @_;
 
@@ -176,10 +181,13 @@ sub calc_boolean {
     return $res;
 }
 
-sub calc_nrs {
-    my($id, $xc) = @_;
+sub calc_nrs { _calc_boolean(@_, 'i:status/i:named_resultset[@ok = "1"]') }
+sub calc_mor { _calc_boolean(@_, 'i:status/i:multiple_opac[@ok = "1"]') }
 
-    my @nodes = $xc->findnodes('i:status/i:named_resultset[@ok = "1"]');
+sub _calc_boolean {
+    my($id, $xc, $xpath) = @_;
+
+    my @nodes = $xc->findnodes($xpath);
     return @nodes ? "Yes" : "No";
 }
 

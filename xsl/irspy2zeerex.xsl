@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
 <!--
-    $Id: irspy2zeerex.xsl,v 1.21 2007/06/28 14:01:56 sondberg Exp $
 
     This stylesheet is used by IRSpy to map the internal mixed Zeerex/IRSpy
     record format into the Zeerex record which we store.
@@ -159,6 +158,16 @@
                     select="*/irspy:serverImplementationVersion"/>
         <xsl:with-param name="what" select="'serverImplementationVersion'"/>
       </xsl:call-template>
+
+      <xsl:call-template name="insert-latest-nodes">
+        <xsl:with-param name="nodes" select="*/irspy:multiple_opac"/>
+        <xsl:with-param name="what" select="'multiple_opac'"/>
+      </xsl:call-template>
+
+      <xsl:call-template name="insert-latest-nodes">
+        <xsl:with-param name="nodes" select="*/irspy:search_bath"/>
+        <xsl:with-param name="what" select="'search_bath'"/>
+      </xsl:call-template>
     </irspy:status>
   </xsl:template>
 
@@ -183,6 +192,7 @@
       <xsl:when test="$latest">
         <xsl:copy-of select="$latest"/>
       </xsl:when>
+      <!-- <xsl:when test="$i > 0 and $i &lt; 200"> -->
       <xsl:when test="$i > 0">
         <xsl:call-template name="insert-latest-nodes">
           <xsl:with-param name="what" select="$what"/>
